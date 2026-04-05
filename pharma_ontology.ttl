@@ -1,0 +1,32 @@
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix pharma: <http://novartis-kg.org/pharma#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+pharma:ChronicDisease a owl:Class ;
+    rdfs:label "Chronic Disease" ;
+    rdfs:subClassOf pharma:Disease .
+
+pharma:associatedWith a owl:ObjectProperty ;
+    rdfs:domain pharma:Gene ;
+    rdfs:range pharma:Disease .
+
+pharma:targets a owl:ObjectProperty ;
+    rdfs:label "targets" ;
+    rdfs:domain pharma:Drug ;
+    rdfs:range pharma:Gene .
+
+pharma:treats a owl:ObjectProperty ;
+    rdfs:label "treats" ;
+    rdfs:domain pharma:Drug ;
+    rdfs:range pharma:Disease .
+
+pharma:Drug a owl:Class ;
+    rdfs:label "Drug" ;
+    rdfs:comment "A pharmaceutical compound used in treatment" .
+
+pharma:Gene a owl:Class ;
+    rdfs:label "Gene" .
+
+pharma:Disease a owl:Class ;
+    rdfs:label "Disease" .
+
