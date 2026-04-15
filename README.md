@@ -57,5 +57,3 @@ Relationships:
 | Atorvastatin | Hypercholesterolemia | E78.0 |
 | Pembrolizumab | Melanoma | C43 |
 
-## Built for
-Novartis Senior Semantic Engineer interview demonstration
