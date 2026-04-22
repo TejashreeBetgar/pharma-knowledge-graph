@@ -1,0 +1,103 @@
+import pandas as pd
+from sqlalchemy import create_engine
+from neo4j import GraphDatabase
+
+# -------------------------------
+# PostgreSQL CONFIG
+# -------------------------------
+PG_USER = "postgres"
+PG_PASSWORD = "postgres123"
+PG_HOST = "localhost"
+PG_PORT = "5432"
+PG_DB = "pharma_db"
+
+engine = create_engine(
+    f"postgresql+psycopg2://{PG_USER}:{PG_PASSWORD}@{PG_HOST}:{PG_PORT}/{PG_DB}"
+)
+
+# -------------------------------
+# Neo4j CONFIG
+# -------------------------------
+NEO4J_URI = "bolt://localhost:7687"
+NEO4J_USER = "neo4j"
+NEO4J_PASSWORD = "pharma123"   # change if needed
+
+driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
+
+# -------------------------------
+# LOAD DATA
+# -------------------------------
+def load_data():
+    drugs = pd.read_sql("SELECT * FROM drugs", engine)
+    diseases = pd.read_sql("SELECT * FROM diseases", engine)
+    genes = pd.read_sql("SELECT * FROM genes", engine)
+    treats = pd.read_sql("SELECT * FROM drug_treats_disease", engine)
+    targets = pd.read_sql("SELECT * FROM drug_targets_gene", engine)
+    assoc = pd.read_sql("SELECT * FROM gene_associated_with_disease", engine)
+
+    with driver.session() as session:
+
+        # clear existing graph
+        session.run("MATCH (n) DETACH DELETE n")
+
+        # -----------------------
+        # Nodes
+        # -----------------------
+        for _, row in drugs.iterrows():
+            session.run("""
+                CREATE (d:Drug {
+                    id: $id,
+                    name: $name,
+                    type: $type,
+                    snomed_code: $snomed_code
+                })
+            """, row.to_dict())
+
+        for _, row in diseases.iterrows():
+            session.run("""
+                CREATE (d:Disease {
+                    id: $id,
+                    name: $name,
+                    category: $category,
+                    icd10: $icd10
+                })
+            """, row.to_dict())
+
+        for _, row in genes.iterrows():
+            session.run("""
+                CREATE (g:Gene {
+                    id: $id,
+                    name: $name,
+                    full_name: $full_name
+                })
+            """, row.to_dict())
+
+        # -----------------------
+        # Relationships
+        # -----------------------
+        for _, row in treats.iterrows():
+            session.run("""
+                MATCH (d:Drug {id: $drug_id})
+                MATCH (dis:Disease {id: $disease_id})
+                CREATE (d)-[:TREATS]->(dis)
+            """, row.to_dict())
+
+        for _, row in targets.iterrows():
+            session.run("""
+                MATCH (d:Drug {id: $drug_id})
+                MATCH (g:Gene {id: $gene_id})
+                CREATE (d)-[:TARGETS]->(g)
+            """, row.to_dict())
+
+        for _, row in assoc.iterrows():
+            session.run("""
+                MATCH (g:Gene {id: $gene_id})
+                MATCH (d:Disease {id: $disease_id})
+                CREATE (g)-[:ASSOCIATED_WITH]->(d)
+            """, row.to_dict())
+
+    print("✅ Data loaded into Neo4j successfully!")
+
+
+if __name__ == "__main__":
+    load_data()
