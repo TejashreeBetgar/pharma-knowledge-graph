@@ -1,0 +1,119 @@
+import requests
+from neo4j import GraphDatabase
+
+URI = "bolt://localhost:7687"
+USER = "neo4j"
+PASSWORD = "pharma123"
+
+OLLAMA_URL = "http://localhost:11434/api/generate"
+MODEL = "phi3:latest"
+
+driver = GraphDatabase.driver(URI, auth=(USER, PASSWORD))
+
+
+# ---------- SIMPLE ENTITY DETECTION ----------
+def detect_entity(question):
+    names = ["Metformin", "Imatinib", "Adalimumab", "Atorvastatin", "Pembrolizumab"]
+    q = question.lower()
+    for name in names:
+        if name.lower() in q:
+            return name
+    return None
+
+
+# ---------- INTENT DETECTION ----------
+def detect_intent(question):
+    q = question.lower()
+    if "treat" in q:
+        return "treat"
+    if "target" in q:
+        return "target"
+    if "pathway" in q or "connected" in q:
+        return "pathway"
+    return "general"
+
+
+# ---------- GRAPH QUERY ----------
+def query_graph(entity, intent):
+    with driver.session() as session:
+        if intent == "treat":
+            rows = session.run("""
+                MATCH (d:Drug {name:$name})-[:TREATS]->(dis:Disease)
+                RETURN d.name AS drug, dis.name AS disease
+            """, name=entity).data()
+
+            return "\n".join([f"{r['drug']} treats {r['disease']}" for r in rows])
+
+        elif intent == "target":
+            rows = session.run("""
+                MATCH (d:Drug {name:$name})-[:TARGETS]->(g:Gene)
+                RETURN d.name AS drug, g.name AS gene
+            """, name=entity).data()
+
+            return "\n".join([f"{r['drug']} targets {r['gene']}" for r in rows])
+
+        elif intent == "pathway":
+            rows = session.run("""
+                MATCH (d:Drug {name:$name})-[:TARGETS]->(g:Gene)-[:ASSOCIATED_WITH]->(dis:Disease)
+                RETURN d.name AS drug, g.name AS gene, dis.name AS disease
+            """, name=entity).data()
+
+            return "\n".join([f"{r['drug']} -> {r['gene']} -> {r['disease']}" for r in rows])
+
+        else:
+            rows = session.run("""
+                MATCH (n {name:$name})-[r]->(m)
+                RETURN n.name AS entity, type(r) AS rel, m.name AS other
+                LIMIT 10
+            """, name=entity).data()
+
+            return "\n".join([f"{r['entity']} -[{r['rel']}]-> {r['other']}" for r in rows])
+
+
+# ---------- LLM FINAL ----------
+def ask_ollama(prompt):
+    response = requests.post(
+        OLLAMA_URL,
+        json={
+            "model": MODEL,
+            "prompt": prompt,
+            "stream": False
+        },
+        timeout=120  # increased
+    )
+    response.raise_for_status()
+    return response.json()["response"]
+
+
+# ---------- MAIN PIPELINE ----------
+def graph_rag_pipeline(question):
+    entity = detect_entity(question)
+
+    if not entity:
+        return {
+            "entity": None,
+            "context": "",
+            "answer": "Could not identify entity."
+        }
+
+    intent = detect_intent(question)
+    context = query_graph(entity, intent)
+
+    prompt = f"""
+Use ONLY this data:
+
+{context}
+
+Question:
+{question}
+
+Answer clearly.
+"""
+
+    answer = ask_ollama(prompt)
+
+    return {
+        "entity": entity,
+        "context": context,
+        "answer": answer
+    }
